@@ -3,15 +3,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const QRCode = require('qrcode');
 
 // --- CONFIGURATION ---
-// HARDCODED CHAT ID (You asked to hardcode it, so here it is)
-const telegramChatId = '1369963590'; 
-
-// Token is still pulled from Railway for security
-const telegramToken = process.env.BOT_TOKEN;
-
-// OPTIONAL: If you ONLY want to forward messages from a specific group, type its exact name here.
-// Leave it as '' (empty) to forward messages from ALL WhatsApp groups.
-const TARGET_GROUP_NAME = ''; 
+const telegramChatId = '1369963590'; // Hardcoded Chat ID
+const telegramToken = process.env.BOT_TOKEN; // Pulled from Railway
 
 // Initialize Telegram Bot
 const bot = new TelegramBot(telegramToken, { polling: true });
@@ -26,6 +19,13 @@ async function sendToTelegram(message) {
 }
 
 (async () => {
+    // Clear any pending webhooks/updates to fix the 409 Conflict error
+    try {
+        await bot.deleteWebHook({ drop_pending_updates: true });
+    } catch (e) {
+        console.log("Could not delete webhook, continuing...");
+    }
+
     await sendToTelegram('🚀 Starting WhatsApp + Telegram bot...');
 
     const client = new Client({
@@ -45,14 +45,14 @@ async function sendToTelegram(message) {
         }
     });
 
-    // QR Code Handler (Sends image to Telegram instead of crashing)
+    // QR Code Handler (FIXED: Uses Buffer instead of DataURL)
     client.on('qr', async (qr) => {
         console.log('QR RECEIVED', qr);
         try {
-            const qrImage = await QRCode.toDataURL(qr);
-            await bot.sendPhoto(telegramChatId, qrImage, { 
+            const qrBuffer = await QRCode.toBuffer(qr);
+            await bot.sendPhoto(telegramChatId, qrBuffer, { 
                 caption: 'Scan this QR code with WhatsApp to link your account' 
-            });
+            }, { filename: 'qrcode.png', contentType: 'image/png' });
             console.log('✅ QR code sent to Telegram successfully!');
         } catch (err) {
             console.error('❌ Failed to send QR to Telegram:', err.message);
@@ -73,7 +73,6 @@ async function sendToTelegram(message) {
         try {
             const chat = await msg.getChat();
             if (!chat.isGroup) return;
-            if (TARGET_GROUP_NAME && chat.name !== TARGET_GROUP_NAME) return;
 
             const contact = await msg.getContact();
             const senderName = contact.pushname || contact.number;
