@@ -1,24 +1,30 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const TelegramBot = require('node-telegram-bot-api');
-const qrcode = require('qrcode-terminal');
-const puppeteer = require('puppeteer');
+const QRCode = require('qrcode');
 
-const telegramBotToken = '8096816657:AAEIGLl_DoC08As3bW8d8lZjqPDtA-TJXtc';
-const telegramChatId = '1786564127';
-const aiContact = '34604154472@c.us';
+// --- CONFIGURATION ---
+// These are pulled from your Railway Variables
+const telegramToken = process.env.BOT_TOKEN;
+const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 
-const bot = new TelegramBot(telegramBotToken);
+// OPTIONAL: If you ONLY want to forward messages from a specific group, type its exact name here.
+// Leave it as '' (empty) to forward messages from ALL WhatsApp groups.
+const TARGET_GROUP_NAME = ''; 
 
-async function sendProgress(msg) {
+// Initialize Telegram Bot
+const bot = new TelegramBot(telegramToken, { polling: true });
+
+// Helper function to send messages to Telegram safely
+async function sendToTelegram(message) {
     try {
-        await bot.sendMessage(telegramChatId, `🔄 ${msg}`);
-    } catch (e) {
-        console.error('❌ Failed to send progress update:', e.message);
+        await bot.sendMessage(telegramChatId, message, { parse_mode: 'Markdown' });
+    } catch (err) {
+        console.error('❌ Failed to send message to Telegram:', err.message);
     }
 }
 
 (async () => {
-    await sendProgress('🚀 Starting WhatsApp + Telegram bot initialization...');
+    await sendToTelegram('🚀 Starting WhatsApp + Telegram bot...');
 
     const client = new Client({
         authStrategy: new LocalAuth({ dataPath: './session' }),
@@ -37,46 +43,64 @@ async function sendProgress(msg) {
         }
     });
 
-const QRCode = require('qrcode');
+    // QR Code Handler (Sends image to Telegram instead of crashing)
+    client.on('qr', async (qr) => {
+        console.log('QR RECEIVED', qr);
+        try {
+            const qrImage = await QRCode.toDataURL(qr);
+            await bot.sendPhoto(telegramChatId, qrImage, { 
+                caption: 'Scan this QR code with WhatsApp to link your account' 
+            });
+            console.log('✅ QR code sent to Telegram successfully!');
+        } catch (err) {
+            console.error('❌ Failed to send QR to Telegram:', err.message);
+        }
+    });
 
-client.on('qr', async (qr) => {
-    console.log('QR RECEIVED', qr);
-    try {
-        const qrImage = await QRCode.toDataURL(qr);
-        // Replace 'YOUR_CHAT_ID' with your actual Telegram chat ID (you can get it from @userinfobot)
-        // Or, if the bot is already listening to messages, we can send it to the last person who sent /start
-        bot.sendPhoto(process.env.TELEGRAM_CHAT_ID || 'YOUR_CHAT_ID', qrImage, { 
-            caption: 'Scan this QR code with WhatsApp to link your account' 
-        });
-    } catch (err) {
-        console.error('Failed to generate QR image', err);
-    }
-});
+    // Status Handlers
+    client.on('ready', () => sendToTelegram('✅ WhatsApp successfully logged in and running!'));
+    client.on('authenticated', () => sendToTelegram('🔐 WhatsApp session authenticated.'));
+    client.on('auth_failure', (msg) => sendToTelegram(`❌ Authentication failed: ${msg}`));
+    client.on('disconnected', (reason) => sendToTelegram(`⚠️ WhatsApp disconnected: ${reason}`));
 
-    client.on('ready', () => sendProgress('✅ WhatsApp successfully logged in and running!'));
-    client.on('authenticated', () => sendProgress('🔐 WhatsApp session authenticated.'));
-    client.on('auth_failure', (msg) => sendProgress(`❌ Authentication failed: ${msg}`));
-    client.on('disconnected', (reason) => sendProgress(`⚠️ WhatsApp disconnected: ${reason}`));
-
+    // Message Handler (Forwards WhatsApp Group messages to Telegram)
     client.on('message', async (msg) => {
-        if (msg.from !== aiContact && msg.body) {
+        // Ignore messages sent by yourself
+        if (msg.fromMe) return;
+        
+        // Ignore messages without text (e.g., images, stickers)
+        if (!msg.body) return;
+
+        try {
             const chat = await msg.getChat();
-            const sender = chat.name || chat.id.user;
-            client.sendMessage(aiContact, `From ${sender}:\n${msg.body}`);
+            
+            // Only forward if it's a group chat
+            if (!chat.isGroup) return;
+
+            // If TARGET_GROUP_NAME is set, only forward from that specific group
+            if (TARGET_GROUP_NAME && chat.name !== TARGET_GROUP_NAME) return;
+
+            // Get sender's name
+            const contact = await msg.getContact();
+            const senderName = contact.pushname || contact.number;
+
+            // Format the message for Telegram
+            const forwardMessage = `*${chat.name}*\n👤 *${senderName}*\n\n${msg.body}`;
+
+            // Send to Telegram
+            await sendToTelegram(forwardMessage);
+            console.log(`✅ Forwarded message from ${senderName}`);
+
+        } catch (err) {
+            console.error('❌ Error processing WhatsApp message:', err.message);
         }
     });
 
-    client.on('message_create', async (msg) => {
-        if (msg.from === aiContact && !msg.fromMe && msg.body) {
-            bot.sendMessage(telegramChatId, `🤖 *AI Reply:*\n${msg.body}`, { parse_mode: 'Markdown' });
-        }
-    });
-
+    // Initialize the WhatsApp client
     try {
         await client.initialize();
-        await sendProgress('🟢 Client initialization complete.');
     } catch (err) {
-        await sendProgress(`🔥 Failed to initialize client: ${err.message}`);
+        await sendToTelegram(`🔥 Failed to initialize client: ${err.message}`);
         console.error('Client init error:', err);
     }
 })();
