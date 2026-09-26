@@ -3,9 +3,11 @@ const TelegramBot = require('node-telegram-bot-api');
 const QRCode = require('qrcode');
 
 // --- CONFIGURATION ---
-// These are pulled from your Railway Variables
+// HARDCODED CHAT ID (You asked to hardcode it, so here it is)
+const telegramChatId = '1369963590'; 
+
+// Token is still pulled from Railway for security
 const telegramToken = process.env.BOT_TOKEN;
-const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 
 // OPTIONAL: If you ONLY want to forward messages from a specific group, type its exact name here.
 // Leave it as '' (empty) to forward messages from ALL WhatsApp groups.
@@ -65,29 +67,18 @@ async function sendToTelegram(message) {
 
     // Message Handler (Forwards WhatsApp Group messages to Telegram)
     client.on('message', async (msg) => {
-        // Ignore messages sent by yourself
         if (msg.fromMe) return;
-        
-        // Ignore messages without text (e.g., images, stickers)
         if (!msg.body) return;
 
         try {
             const chat = await msg.getChat();
-            
-            // Only forward if it's a group chat
             if (!chat.isGroup) return;
-
-            // If TARGET_GROUP_NAME is set, only forward from that specific group
             if (TARGET_GROUP_NAME && chat.name !== TARGET_GROUP_NAME) return;
 
-            // Get sender's name
             const contact = await msg.getContact();
             const senderName = contact.pushname || contact.number;
-
-            // Format the message for Telegram
             const forwardMessage = `*${chat.name}*\n👤 *${senderName}*\n\n${msg.body}`;
 
-            // Send to Telegram
             await sendToTelegram(forwardMessage);
             console.log(`✅ Forwarded message from ${senderName}`);
 
