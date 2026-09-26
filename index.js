@@ -5,6 +5,7 @@ const QRCode = require('qrcode');
 // --- CONFIGURATION ---
 const telegramChatId = '1369963590'; // Hardcoded Chat ID
 const telegramToken = process.env.BOT_TOKEN; // Pulled from Railway
+const TARGET_GROUP_NAME = 'Gold'; // <--- ONLY FORWARD FROM THIS GROUP
 
 // Initialize Telegram Bot
 const bot = new TelegramBot(telegramToken, { polling: true });
@@ -45,7 +46,7 @@ async function sendToTelegram(message) {
         }
     });
 
-    // QR Code Handler (FIXED: Uses Buffer instead of DataURL)
+    // QR Code Handler
     client.on('qr', async (qr) => {
         console.log('QR RECEIVED', qr);
         try {
@@ -65,14 +66,19 @@ async function sendToTelegram(message) {
     client.on('auth_failure', (msg) => sendToTelegram(`❌ Authentication failed: ${msg}`));
     client.on('disconnected', (reason) => sendToTelegram(`⚠️ WhatsApp disconnected: ${reason}`));
 
-    // Message Handler (Forwards WhatsApp Group messages to Telegram)
+    // Message Handler (Forwards ONLY the "Gold" group to Telegram)
     client.on('message', async (msg) => {
         if (msg.fromMe) return;
         if (!msg.body) return;
 
         try {
             const chat = await msg.getChat();
+            
+            // 1. Ignore if it's not a group
             if (!chat.isGroup) return;
+
+            // 2. Ignore if the group name does not exactly match "Gold"
+            if (chat.name !== TARGET_GROUP_NAME) return;
 
             const contact = await msg.getContact();
             const senderName = contact.pushname || contact.number;
