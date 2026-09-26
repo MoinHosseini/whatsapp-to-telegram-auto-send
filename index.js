@@ -37,14 +37,21 @@ async function sendProgress(msg) {
         }
     });
 
-    client.on('qr', (qr) => {
-        qrcode.generate(qr, { small: true });
-        bot.sendMessage(telegramChatId, '📲 *Scan this QR code to log in to WhatsApp:*');
-        bot.sendPhoto(
-            telegramChatId,
-            `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`
-        );
-    });
+const QRCode = require('qrcode');
+
+client.on('qr', async (qr) => {
+    console.log('QR RECEIVED', qr);
+    try {
+        const qrImage = await QRCode.toDataURL(qr);
+        // Replace 'YOUR_CHAT_ID' with your actual Telegram chat ID (you can get it from @userinfobot)
+        // Or, if the bot is already listening to messages, we can send it to the last person who sent /start
+        bot.sendPhoto(process.env.TELEGRAM_CHAT_ID || 'YOUR_CHAT_ID', qrImage, { 
+            caption: 'Scan this QR code with WhatsApp to link your account' 
+        });
+    } catch (err) {
+        console.error('Failed to generate QR image', err);
+    }
+});
 
     client.on('ready', () => sendProgress('✅ WhatsApp successfully logged in and running!'));
     client.on('authenticated', () => sendProgress('🔐 WhatsApp session authenticated.'));
