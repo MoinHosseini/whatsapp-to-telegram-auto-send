@@ -34,7 +34,6 @@ async function sendProgress(msg) {
                 '--single-process',
                 '--disable-gpu'
             ],
-            executablePath: '/usr/bin/chromium'
         }
     });
 
